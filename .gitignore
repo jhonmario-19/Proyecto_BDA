@@ -1,0 +1,32 @@
+# Credenciales y tokens
+profiles.yml
+*.env
+.env
+secrets.json
+*token*
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+dist/
+build/
+
+# Databricks
+.databricks/
+*.dbc
+
+# Power BI caché
+*.pbix.bak
+
+# Sistema
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# dbt
+dbt/target/
+dbt/logs/
+dbt/.user.yml
