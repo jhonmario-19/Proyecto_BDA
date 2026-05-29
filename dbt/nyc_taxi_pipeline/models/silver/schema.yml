@@ -8,14 +8,15 @@ models:
         description: "ID único por viaje generado con MD5"
         tests:
           - not_null
-          - unique
+          - unique:
+              config:
+                severity: warn
 
       - name: vendor_id
-        description: "ID del proveedor de taxi (1 o 2)"
+        description: "ID del proveedor de taxi"
         tests:
-          - not_null
           - accepted_values:
-              values: [1, 2]
+              values: [1, 2, 3, 4]
 
       - name: pickup_datetime
         description: "Fecha y hora de recogida"

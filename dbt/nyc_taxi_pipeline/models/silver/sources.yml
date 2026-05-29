@@ -1,0 +1,11 @@
+version: 2
+
+sources:
+  - name: bronze
+    catalog: proyecto_bi
+    schema: bronze
+    tables:
+      - name: nyc_taxi_v1
+        description: "Datos crudos NYC Taxi 2009-2015 con coordenadas GPS"
+      - name: nyc_taxi_v2
+        description: "Datos crudos NYC Taxi 2016-2019 con Location IDs"
