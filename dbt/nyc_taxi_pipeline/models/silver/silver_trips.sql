@@ -6,8 +6,7 @@
 
 -- ============================================================
 -- SILVER: silver_trips
--- Limpieza y normalización de Bronze v2 (2016-2019)
--- 431 millones de registros con esquema Location IDs
+-- Limpieza y normalización de Bronze v2 (julio 2016 - 2019)
 -- ============================================================
 
 WITH bronze_v2 AS (
@@ -36,43 +35,36 @@ WITH bronze_v2 AS (
 
 limpio AS (
     SELECT
-        -- ID único por viaje
+        MD5(CONCAT(
+            COALESCE(vendor_id, ''),
+            COALESCE(CAST(pickup_datetime AS STRING), ''),
+            COALESCE(CAST(dropoff_datetime AS STRING), ''),
+            COALESCE(CAST(trip_distance AS STRING), ''),
+            COALESCE(CAST(payment_type AS STRING), ''),
+            COALESCE(CAST(pu_location_id AS STRING), ''),
+            COALESCE(CAST(do_location_id AS STRING), ''),
+            COALESCE(CAST(total_amount AS STRING), '')
+        ))                                              AS trip_id,
 
-		MD5(CONCAT(
-			COALESCE(vendor_id, ''),
-			COALESCE(CAST(pickup_datetime AS STRING), ''),
-			COALESCE(CAST(dropoff_datetime AS STRING), ''),
-			COALESCE(CAST(trip_distance AS STRING), ''),
-			COALESCE(CAST(payment_type AS STRING), ''),
-			COALESCE(CAST(pu_location_id AS STRING), ''),
-			COALESCE(CAST(do_location_id AS STRING), ''),
-			COALESCE(CAST(total_amount AS STRING), '')
-		))                                          AS trip_id,
+        TRY_CAST(vendor_id AS INT)                      AS vendor_id,
 
-		-- vendor_id: permitir nulos en lugar de fallar
-		TRY_CAST(vendor_id AS INT)                 AS vendor_id,
-
-        -- Timestamps validados
         pickup_datetime,
         dropoff_datetime,
 
-        -- Duración en minutos calculada
         ROUND(
             (UNIX_TIMESTAMP(dropoff_datetime) - UNIX_TIMESTAMP(pickup_datetime)) / 60, 2
-        )                                           AS trip_duration_min,
+        )                                               AS trip_duration_min,
 
-        -- Pasajeros: nulos → 1, fuera de rango → null
         CASE
             WHEN passenger_count IS NULL THEN 1
             WHEN passenger_count BETWEEN 1 AND 6 THEN passenger_count
             ELSE NULL
-        END                                         AS passenger_count,
+        END                                             AS passenger_count,
 
-        -- Distancia: ceros y negativos → null
         CASE
             WHEN trip_distance > 0 THEN trip_distance
             ELSE NULL
-        END                                         AS trip_distance,
+        END                                             AS trip_distance,
 
         ratecode_id,
         store_and_fwd_flag,
@@ -80,7 +72,6 @@ limpio AS (
         pu_location_id,
         do_location_id,
 
-        -- Tarifas: negativos → null
         CASE WHEN fare_amount >= 0 THEN fare_amount ELSE NULL END       AS fare_amount,
         CASE WHEN extra >= 0 THEN extra ELSE NULL END                   AS extra,
         CASE WHEN mta_tax >= 0 THEN mta_tax ELSE NULL END               AS mta_tax,
@@ -96,6 +87,64 @@ limpio AS (
         AND dropoff_datetime IS NOT NULL
         AND dropoff_datetime > pickup_datetime
         AND YEAR(pickup_datetime) BETWEEN 2016 AND 2019
+),
+
+final AS (
+    SELECT *
+    FROM (
+        SELECT
+            trip_id,
+            COALESCE(vendor_id, -1)      AS vendor_id,
+            pickup_datetime,
+            dropoff_datetime,
+            trip_duration_min,
+            passenger_count,
+            trip_distance,
+            ratecode_id,
+            store_and_fwd_flag,
+            COALESCE(payment_type, -1)   AS payment_type,
+            pu_location_id,
+            do_location_id,
+            fare_amount,
+            extra,
+            mta_tax,
+            tip_amount,
+            tolls_amount,
+            improvement_surcharge,
+            congestion_surcharge,
+            total_amount,
+            ROW_NUMBER() OVER (
+                PARTITION BY trip_id
+                ORDER BY pickup_datetime
+            ) AS rn
+        FROM limpio
+        WHERE
+            trip_distance <= 200
+            AND total_amount <= 1000
+            AND total_amount >= 0
+    ) deduplicado
+    WHERE rn = 1
 )
 
-SELECT * FROM limpio
+SELECT
+    trip_id,
+    vendor_id,
+    pickup_datetime,
+    dropoff_datetime,
+    trip_duration_min,
+    passenger_count,
+    trip_distance,
+    ratecode_id,
+    store_and_fwd_flag,
+    payment_type,
+    pu_location_id,
+    do_location_id,
+    fare_amount,
+    extra,
+    mta_tax,
+    tip_amount,
+    tolls_amount,
+    improvement_surcharge,
+    congestion_surcharge,
+    total_amount
+FROM final

@@ -13,10 +13,10 @@ models:
                 severity: warn
 
       - name: vendor_id
-        description: "ID del proveedor de taxi"
+        description: "ID del proveedor de taxi (-1=Desconocido, 1=Creative Mobile, 2=VeriFone)"
         tests:
           - accepted_values:
-              values: [1, 2, 3, 4]
+              values: [1, 2, 3, 4, -1]
 
       - name: pickup_datetime
         description: "Fecha y hora de recogida"
@@ -35,10 +35,10 @@ models:
               values: [1, 2, 3, 4, 5, 6]
 
       - name: payment_type
-        description: "Tipo de pago (1=tarjeta, 2=efectivo, 3=sin cargo, 4=disputa)"
+        description: "Tipo de pago (-1=desconocido, 1=tarjeta, 2=efectivo, 3=sin cargo, 4=disputa)"
         tests:
           - accepted_values:
-              values: [1, 2, 3, 4, 5]
+              values: [1, 2, 3, 4, 5, -1]
 
       - name: pu_location_id
         description: "ID de zona de recogida"
