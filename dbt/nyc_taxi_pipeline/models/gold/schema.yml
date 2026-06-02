@@ -1,0 +1,225 @@
+version: 2
+
+models:
+
+  # ─────────────────────────────────────────────
+  # DIMENSION: Temporal
+  # ─────────────────────────────────────────────
+  - name: gold_dim_datetime
+    description: >
+      Dimension temporal generada desde silver_trips.
+      Granularidad: un registro por minuto unico de pickup_datetime.
+      Rango esperado: julio 2016 - diciembre 2019.
+    columns:
+      - name: datetime_id
+        description: Surrogate key BIGINT en formato YYYYMMDDHHMM
+        tests:
+          - not_null
+          - unique
+      - name: pickup_datetime
+        description: Timestamp del minuto (truncado) de recogida
+        tests:
+          - not_null
+      - name: year
+        description: Anio del viaje
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [2016, 2017, 2018, 2019]
+      - name: quarter
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [1, 2, 3, 4]
+      - name: hour
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23]
+      - name: is_weekend
+        tests:
+          - not_null
+      - name: is_rush_hour
+        tests:
+          - not_null
+
+  # ─────────────────────────────────────────────
+  # DIMENSION: Proveedor
+  # ─────────────────────────────────────────────
+  - name: gold_dim_vendor
+    description: >
+      Dimension de proveedores de taxi (tabla estatica, 5 filas).
+      vendor_id = -1 representa registros con proveedor nulo en origen.
+    columns:
+      - name: vendor_id
+        description: Identificador del proveedor (PK)
+        tests:
+          - not_null
+          - unique
+          - accepted_values:
+              arguments:
+                values: [-1, 1, 2, 3, 4]
+      - name: vendor_name
+        tests:
+          - not_null
+
+  # ─────────────────────────────────────────────
+  # DIMENSION: Tipo de pago
+  # ─────────────────────────────────────────────
+  - name: gold_dim_payment
+    description: >
+      Dimension de tipos de pago (tabla estatica, 6 filas).
+      La columna generates_tip es critica para el KPI 2 (Tasa de Propina):
+      filtra solo los pagos digitales donde la propina queda registrada.
+    columns:
+      - name: payment_id
+        description: Identificador del tipo de pago (PK)
+        tests:
+          - not_null
+          - unique
+          - accepted_values:
+              arguments:
+                values: [-1, 1, 2, 3, 4, 5]
+      - name: generates_tip
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [true, false]
+
+  # ─────────────────────────────────────────────
+  # DIMENSION: Geografica (role-playing)
+  # ─────────────────────────────────────────────
+  - name: gold_dim_location
+    description: >
+      Dimension geografica con las 263 zonas de taxi predefinidas por el TLC de NYC.
+      Esta dimension se usa dos veces en gold_fact_trips (patron role-playing):
+      una como zona de recogida (pu_location_id) y otra como zona de destino
+      (do_location_id). En Power BI se configuran dos relaciones con USERELATIONSHIP.
+    columns:
+      - name: location_id
+        description: ID de zona TLC (PK), rango 1-265
+        tests:
+          - not_null
+          - unique
+      - name: zone_name
+        tests:
+          - not_null
+      - name: borough
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['Manhattan', 'Brooklyn', 'Queens', 'Bronx', 'Staten Island', 'EWR', 'Unknown']
+      - name: region_group
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['Manhattan', 'Outer Boroughs', 'Airports', 'Desconocido']
+
+  # ─────────────────────────────────────────────
+  # TABLA DE HECHOS
+  # ─────────────────────────────────────────────
+  - name: gold_fact_trips
+    description: >
+      Tabla de hechos central del Star Schema NYC Yellow Taxi.
+      Granularidad: un viaje completado = una fila.
+      Registros esperados: ~359,597,254 (provenientes de silver_trips).
+      Particionada por year para optimizar consultas en Power BI.
+    columns:
+      - name: fact_id
+        description: Surrogate key unico de la fact table (ROW_NUMBER)
+        tests:
+          - not_null
+          - unique
+
+      - name: datetime_id
+        description: FK hacia gold_dim_datetime (formato YYYYMMDDHHMM como BIGINT)
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('gold_dim_datetime')
+                field: datetime_id
+              config:
+                severity: warn
+
+      - name: vendor_id
+        description: FK hacia gold_dim_vendor
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('gold_dim_vendor')
+                field: vendor_id
+
+      - name: payment_id
+        description: FK hacia gold_dim_payment
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('gold_dim_payment')
+                field: payment_id
+
+      - name: pu_location_id
+        description: FK hacia gold_dim_location (zona de recogida)
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('gold_dim_location')
+                field: location_id
+              config:
+                severity: warn
+
+      - name: do_location_id
+        description: FK hacia gold_dim_location (zona de destino)
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('gold_dim_location')
+                field: location_id
+              config:
+                severity: warn
+
+      - name: passenger_count
+        description: Numero de pasajeros (1-6)
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [1, 2, 3, 4, 5, 6]
+
+      - name: trip_distance
+        description: Distancia del viaje en millas (> 0 y <= 200)
+        tests:
+          - not_null
+
+      - name: trip_duration_min
+        description: Duracion del viaje en minutos (> 0)
+        tests:
+          - not_null
+
+      - name: tip_amount
+        description: Monto de la propina en USD (>= 0)
+        tests:
+          - not_null
+
+      - name: total_amount
+        description: Total cobrado al pasajero en USD (>= 0 y <= 1000)
+        tests:
+          - not_null
+
+      - name: year
+        description: Anio del viaje (campo de particion)
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [2016, 2017, 2018, 2019]
